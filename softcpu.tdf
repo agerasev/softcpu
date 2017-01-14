@@ -32,7 +32,10 @@ variable
 	ip: LPM_Counter with (lpm_width=8); -- instruction pointer register
 	
 	rom: ROM16;
-	-- ram: RAM8;
+	ram: RAM8;
+	
+	cmd[7..0]: node;
+	arg[7..0]: node;
 begin
 	stage.clock = clock;
 	ip.clock = clock;
@@ -41,16 +44,19 @@ begin
 	rom.address[] = ip.q[];
 	rom.clock = clock;
 	
+	cmd[] = rom.q[15..8];
+	arg[] = rom.q[7..0];
+	
 	-- JMP command
-	ip.data[] = rom.q[7..0];
-	if (rom.q[15..8] == JMP) then
+	if (cmd[] == JMP) then
+		ip.data[] = arg[];
 		ip.sload = VCC;
 	else
 		ip.sload = GND;
 	end if;
 	
 	-- RST command
-	if (rom.q[15..8] == RST) then
+	if (cmd[] == RST) then
 		ip.sclr = VCC;
 	else
 		ip.sclr = GND;
