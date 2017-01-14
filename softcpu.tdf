@@ -6,29 +6,36 @@ include "ram8.inc";
 
 -- commands
 constant NOP    = 0; -- no operation
-constant RD     = 1; -- read from RAM to ACCUM
-constant WR     = 2; -- write from ACCUM to RAM
+constant READ   = 1; -- read from RAM to ACCUM
+constant WRITE  = 2; -- write from ACCUM to RAM
 
-constant JMP    = 16; -- jump to instruction
-constant JMPIF  = 17; -- jump to instruction if ACCUM is non-zero
+constant SET    = 8; -- set constant value
 
-constant RST    = 255; -- reset
+constant JUMP   = 16; -- jump to instruction
+constant JUMPIF = 17; -- jump to instruction if ACCUM is non-zero
+
+constant RESET  = 255; -- reset
 
 subdesign softcpu
 (
 	clock: input;
-	-- _accum[7..0]: output;
+	_accum[7..0]: output;
+	_wr_acc: output;
+	_wr_ram: output;
 	
-	_stage[1..0]: output;
+	_stage[2..0]: output;
 	_ip[7..0]: output;
 	
 	_rom[15..0]: output;
+	_ram[7..0]: output;
 )
 
 variable
-	-- accum[7..0]: DFF; -- accumulator register
+	accum[7..0]: DFF; -- accumulator register
+	wr_acc: node;
+	wr_ram: node;
 	
-	stage: LPM_Counter with (lpm_width=2); -- stage counter
+	stage: LPM_Counter with (lpm_width=3, lpm_modulus=8); -- stage counter
 	ip: LPM_Counter with (lpm_width=8); -- instruction pointer register
 	
 	rom: ROM16;
@@ -39,32 +46,68 @@ variable
 begin
 	stage.clock = clock;
 	ip.clock = clock;
-	ip.clk_en = (stage.q[] == 3);
+	ip.clk_en = (stage.q[] == 7);
 
 	rom.address[] = ip.q[];
 	rom.clock = clock;
 	
+	ram.clock = clock;
+	
 	cmd[] = rom.q[15..8];
 	arg[] = rom.q[7..0];
 	
-	-- JMP command
-	if (cmd[] == JMP) then
+	accum[].clk = clock and wr_acc and stage.q[] == 3;
+	
+	ram.wren = wr_ram and stage.q[] == 3;
+	
+	-- READ command
+	if (cmd[] == READ) then
+		accum[].d = ram.q[];
+		ram.address[] = arg[];
+		wr_acc = VCC;
+	else
+		wr_acc = GND;
+	end if;
+	
+	-- WRITE command
+	if (cmd[] == WRITE) then
+		ram.data[] = accum[].q;
+		ram.address[] = arg[];
+		wr_ram = VCC;
+	else
+		wr_ram = GND;
+	end if;
+	
+	-- SET command
+	if (cmd[] == SET) then
+		accum[].d = arg[];
+		wr_acc = VCC;
+	else
+		wr_acc = GND;
+	end if;
+	
+	-- JUMP command
+	if (cmd[] == JUMP) then
 		ip.data[] = arg[];
 		ip.sload = VCC;
 	else
 		ip.sload = GND;
 	end if;
 	
-	-- RST command
-	if (cmd[] == RST) then
+	-- RESET command
+	if (cmd[] == RESET) then
 		ip.sclr = VCC;
 	else
 		ip.sclr = GND;
 	end if;
 
-	-- _accum[] = accum[].q;
+	_accum[] = accum[].q;
 	_stage[] = stage.q[];
 	_ip[] = ip.q[];
 	
 	_rom[] = rom.q[];
+	_ram[] = ram.q[];
+	
+	_wr_acc = wr_acc;
+	_wr_ram = wr_ram;
 end;
