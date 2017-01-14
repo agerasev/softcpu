@@ -1,0 +1,8 @@
+*
+!.gitignore
+!*.qpf
+!*.tdf
+!*.inc
+!*.qip
+!*.mif
+!lib

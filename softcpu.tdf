@@ -1,0 +1,64 @@
+title "softcpu";
+
+include "lpm_counter.inc";
+include "rom16.inc";
+include "ram8.inc";
+
+-- commands
+constant NOP    = 0; -- no operation
+constant RD     = 1; -- read from RAM to ACCUM
+constant WR     = 2; -- write from ACCUM to RAM
+
+constant JMP    = 16; -- jump to instruction
+constant JMPIF  = 17; -- jump to instruction if ACCUM is non-zero
+
+constant RST    = 255; -- reset
+
+subdesign softcpu
+(
+	clock: input;
+	-- _accum[7..0]: output;
+	
+	_stage[1..0]: output;
+	_ip[7..0]: output;
+	
+	_rom[15..0]: output;
+)
+
+variable
+	-- accum[7..0]: DFF; -- accumulator register
+	
+	stage: LPM_Counter with (lpm_width=2); -- stage counter
+	ip: LPM_Counter with (lpm_width=8); -- instruction pointer register
+	
+	rom: ROM16;
+	-- ram: RAM8;
+begin
+	stage.clock = clock;
+	ip.clock = clock;
+	ip.clk_en = (stage.q[] == 3);
+
+	rom.address[] = ip.q[];
+	rom.clock = clock;
+	
+	-- JMP command
+	ip.data[] = rom.q[7..0];
+	if (rom.q[15..8] == JMP) then
+		ip.sload = VCC;
+	else
+		ip.sload = GND;
+	end if;
+	
+	-- RST command
+	if (rom.q[15..8] == RST) then
+		ip.sclr = VCC;
+	else
+		ip.sclr = GND;
+	end if;
+
+	-- _accum[] = accum[].q;
+	_stage[] = stage.q[];
+	_ip[] = ip.q[];
+	
+	_rom[] = rom.q[];
+end;
