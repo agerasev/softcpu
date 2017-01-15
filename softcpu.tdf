@@ -3,6 +3,7 @@ title "softcpu";
 include "lpm_counter.inc";
 include "rom16.inc";
 include "ram8.inc";
+include "alu8.inc";
 
 -- commands
 constant NOP          = 0; -- no operation
@@ -11,19 +12,27 @@ constant WRITE        = 2; -- write from ACCUM to RAM
 constant READ_ADDR    = 3; -- read from address from ADDR
 constant WRITE_ADDR   = 4; -- write to address from ADDR
 
-constant SET          = 8; -- set constant value
-constant PUT_ADDR     = 9; -- copy value from ACCUM to ADDR
+constant SET          = 8; -- write argument value to ACCUM
+constant COPY_ADDR    = 9; -- copy value from ACCUM to ADDR
+constant SET_ADDR     = 10; -- write argument value to ADDR
 
 constant JUMP         = 16; -- jump to instruction
 constant JUMP_IF      = 17; -- jump to instruction if ACCUM is non-zero
 constant JUMP_ADDR    = 18; -- jump to instruction from ADDR
 constant JUMP_ADDR_IF = 19; -- jump to instruction from ADDR if ACCUM is non-zero
 
+constant ADD          = 32; -- add argument to ACCUM and write result to ACCUM
+constant SUB          = 33; -- subtract argument from ACCUM and write result to ACCUM
+constant ADD_ADDR     = 34; -- add RAM content at ADDR to ACCUM and write result to ACCUM
+constant SUB_ADDR     = 35; -- subtract RAM content at ADDR from ACCUM and write result to ACCUM
+
 constant RESET        = 255; -- jump to zero instruction
 
 -- constant
-constant STAGES = 6;
-constant WR_STAGE = 3;
+constant STAGES = 8;
+constant INC_STAGE = 7;
+constant WR_STAGE = 6;
+constant ALU_STAGE = 4;
 
 subdesign softcpu
 (
@@ -31,12 +40,13 @@ subdesign softcpu
 	_accum[7..0]: output;
 	_addr[7..0]: output;
 	
-	_wr_acc: output;
+	_wr_accum: output;
 	_wr_ram: output;
 	_wr_addr: output;
+	_wr_alu: output;
 	
-	_accum_clk: output;
-	_addr_clk: output;
+	_accum_ena: output;
+	_addr_ena: output;
 	_ram_wren: output;
 	
 	_stage[2..0]: output;
@@ -44,18 +54,22 @@ subdesign softcpu
 	
 	_rom[15..0]: output;
 	_ram[7..0]: output;
+	
+	_alu[7..0]: output;
+	_alu_en: output;
 )
 
 variable
-	accum[7..0]: DFF; -- accumulator register
-	addr[7..0]: DFF; -- address register
+	accum[7..0]: DFFE; -- accumulator register
+	addr[7..0]: DFFE; -- address register
 	
-	wr_acc: node;
+	wr_accum: node;
 	wr_ram: node;
 	wr_addr: node;
+	wr_alu: node;
 	
-	accum_clk: node;
-	addr_clk: node;
+	accum_ena: node;
+	addr_ena: node;
 	ram_wren: node;
 	
 	stage: LPM_Counter with (lpm_width=3, lpm_modulus=STAGES); -- stage counter
@@ -64,28 +78,47 @@ variable
 	rom: ROM16;
 	ram: RAM8;
 	
+	alu: ALU8;
+	alu_en: node;
+	
 	cmd[7..0]: node;
 	arg[7..0]: node;
 begin
 	stage.clock = clock;
 	ip.clock = clock;
-	ip.clk_en = (stage.q[] == STAGES - 1);
+	ip.clk_en = stage.q[] >= INC_STAGE;
+	
+	accum[].clk = clock;
+	addr[].clk = clock;
 
 	rom.address[] = ip.q[];
 	rom.clock = clock;
 	
 	ram.clock = clock;
 	
+	alu.clock = clock;
+	alu.dataa[] = accum[].q;
+	alu_en = wr_alu and stage.q[] >= ALU_STAGE and stage.q[] < WR_STAGE;
+	alu.clken = alu_en;
+	
 	cmd[] = rom.q[15..8];
 	arg[] = rom.q[7..0];
 	
-	accum_clk = clock and wr_acc and stage.q[] >= WR_STAGE;
-	addr_clk = clock and wr_addr and stage.q[] >= WR_STAGE;
-	accum[].clk = accum_clk;
-	addr[].clk = addr_clk;
+	accum_ena = wr_accum and stage.q[] >= WR_STAGE;
+	addr_ena = wr_addr and stage.q[] >= WR_STAGE;
+	accum[].ena = accum_ena;
+	addr[].ena = addr_ena;
 	
 	ram_wren = wr_ram and stage.q[] >= WR_STAGE;
 	ram.wren = ram_wren;
+	
+	wr_accum = GND;
+	wr_addr = GND;
+	wr_ram = GND;
+	wr_alu = GND;
+	
+	ip.sclr = GND;
+	ip.sload = GND;
 	
 	-- READ, READ_ADDR command
 	if cmd[] == READ or cmd[] == READ_ADDR then
@@ -95,9 +128,7 @@ begin
 			ram.address[] = addr[].q;
 		end if;
 		accum[].d = ram.q[];
-		wr_acc = VCC;
-	else
-		wr_acc = GND;
+		wr_accum = VCC;
 	end if;
 	
 	-- WRITE, WRITE_ADDR command
@@ -109,24 +140,24 @@ begin
 		end if;
 		ram.data[] = accum[].q;
 		wr_ram = VCC;
-	else
-		wr_ram = GND;
 	end if;
 	
 	-- SET command
 	if cmd[] == SET then
 		accum[].d = arg[];
-		wr_acc = VCC;
-	else
-		wr_acc = GND;
+		wr_accum = VCC;
 	end if;
 	
-	-- PUT_ADDR command
-	if cmd[] == PUT_ADDR then
+	-- COPY_ADDR command
+	if cmd[] == COPY_ADDR then
 		addr[].d = accum[].q;
 		wr_addr = VCC;
-	else
-		wr_addr = GND;
+	end if;
+	
+	-- SET_ADDR command
+	if cmd[] == SET_ADDR then
+		addr[].d = arg[];
+		wr_addr = VCC;
 	end if;
 	
 	-- JUMP, JUMP_IF, JUMP_ADDR, JUMP_ADDR_IF commands
@@ -138,15 +169,29 @@ begin
 			ip.data[] = addr[].q;
 		end if;
 		ip.sload = VCC;
-	else
-		ip.sload = GND;
+	end if;
+	
+	-- ADD, SUB, ADD_ADDR, SUB_ADDR commands
+	if cmd[] == ADD or cmd[] == SUB or cmd[] == ADD_ADDR or cmd[] == SUB_ADDR then
+		if cmd[] == ADD or cmd[] == SUB then
+			alu.datab[] = arg[];
+		else
+			ram.address[] = addr[].q;
+			alu.datab[] = ram.q[];
+		end if;
+		if cmd[] == ADD or cmd[] == ADD_ADDR then
+			alu.add_sub = VCC;
+		else
+			alu.add_sub = GND;
+		end if;
+		wr_alu = VCC;
+		accum[].d = alu.result[];
+		wr_accum = VCC;
 	end if;
 	
 	-- RESET command
 	if cmd[] == RESET then
 		ip.sclr = VCC;
-	else
-		ip.sclr = GND;
 	end if;
 
 	_accum[] = accum[].q;
@@ -158,11 +203,15 @@ begin
 	_rom[] = rom.q[];
 	_ram[] = ram.q[];
 	
-	_wr_acc = wr_acc;
+	_alu[] = alu.result[];
+	_alu_en = alu_en;
+	_wr_alu = wr_alu;
+	
+	_wr_accum = wr_accum;
 	_wr_ram = wr_ram;
 	_wr_addr = wr_addr;
 	
-	_accum_clk = accum_clk;
-	_addr_clk = addr_clk;
+	_accum_ena = accum_ena;
+	_addr_ena = addr_ena;
 	_ram_wren = ram_wren;
 end;

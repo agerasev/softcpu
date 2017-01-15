@@ -37,19 +37,25 @@ cmds = {
 	'WRITE_ADDR':  0x04,
 
 	'SET':         0x08,
-	'PUT_ADDR':    0x09,
+	'COPY_ADDR':   0x09,
+	'SET_ADDR':    0x0A,
 
 	'JUMP':         0x10,
 	'JUMP_IF':      0x11,
 	'JUMP_ADDR':    0x12,
 	'JUMP_ADDR_IF': 0x13,
+	
+	'ADD':          0x20,
+	'SUB':          0x21,
+	'ADD_ADDR':     0x22,
+	'SUB_ADDR':     0x23,
 
 	'RESET':        0xFF
 }
 
 print('CONTENT BEGIN')
 index = 0
-for line in open('prog.asm'):
+for line in open('program.asm'):
 	parts = line.strip().split()
 	if len(parts) > 0:
 		cmd = cmds[parts[0].upper()]
