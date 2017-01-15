@@ -1,4 +1,6 @@
+#!/usr/bin/python3
 
+print('''
 -- Copyright (C) 1991-2008 Altera Corporation
 -- Your use of Altera Corporation's design tools, logic functions 
 -- and other software and tools, and its AMPP partner logic 
@@ -14,41 +16,47 @@
 -- applicable agreement for further details.
 
 -- Quartus II generated Memory Initialization File (.mif)
+''')
 
+width = 16
+depth = 256
 
-WIDTH=16;
-DEPTH=256;
+print('''
+WIDTH=%d;
+DEPTH=%d;
 
 ADDRESS_RADIX=UNS;
 DATA_RADIX=HEX;
+''' % (width, depth))
 
-CONTENT BEGIN
-	0 : 1002;
-	1 : FF00;
-	2 : 0800;
-	3 : 1107;
-	4 : 0814;
-	5 : 1108;
-	6 : FF00;
-	7 : FF00;
-	8 : 080C;
-	9 : 0900;
-	10 : 1200;
-	11 : FF00;
-	12 : 08AB;
-	13 : 0200;
-	14 : 08CD;
-	15 : 0201;
-	16 : 0100;
-	17 : 0101;
-	18 : 0802;
-	19 : 0900;
-	20 : 08EF;
-	21 : 0400;
-	22 : 0801;
-	23 : 0900;
-	24 : 0300;
-	25 : 0000;
-	26 : FF00;
-	[27..255] : 0000;
-END;
+cmds = {
+	'NOP':         0x00,
+	'READ':        0x01,
+	'WRITE':       0x02,
+	'READ_ADDR':   0x03,
+	'WRITE_ADDR':  0x04,
+
+	'SET':         0x08,
+	'PUT_ADDR':    0x09,
+
+	'JUMP':         0x10,
+	'JUMP_IF':      0x11,
+	'JUMP_ADDR':    0x12,
+	'JUMP_ADDR_IF': 0x13,
+
+	'RESET':        0xFF
+}
+
+print('CONTENT BEGIN')
+index = 0
+for line in open('prog.asm'):
+	parts = line.strip().split()
+	if len(parts) > 0:
+		cmd = cmds[parts[0].upper()]
+		arg = 0;
+		if len(parts) > 1:
+			arg = int(parts[1])
+		print('\t%d : %02X%02X;' % (index, cmd, arg))
+		index += 1
+print('\t[%d..%d] : 0000;' % (index, depth - 1))
+print('END;')

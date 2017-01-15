@@ -21,6 +21,10 @@ constant JUMP_ADDR_IF = 19; -- jump to instruction from ADDR if ACCUM is non-zer
 
 constant RESET        = 255; -- jump to zero instruction
 
+-- constant
+constant STAGES = 6;
+constant WR_STAGE = 3;
+
 subdesign softcpu
 (
 	clock: input;
@@ -54,7 +58,7 @@ variable
 	addr_clk: node;
 	ram_wren: node;
 	
-	stage: LPM_Counter with (lpm_width=3, lpm_modulus=8); -- stage counter
+	stage: LPM_Counter with (lpm_width=3, lpm_modulus=STAGES); -- stage counter
 	ip: LPM_Counter with (lpm_width=8); -- instruction pointer register
 	
 	rom: ROM16;
@@ -65,7 +69,7 @@ variable
 begin
 	stage.clock = clock;
 	ip.clock = clock;
-	ip.clk_en = (stage.q[] == 7);
+	ip.clk_en = (stage.q[] == STAGES - 1);
 
 	rom.address[] = ip.q[];
 	rom.clock = clock;
@@ -75,12 +79,12 @@ begin
 	cmd[] = rom.q[15..8];
 	arg[] = rom.q[7..0];
 	
-	accum_clk = clock and wr_acc and stage.q[] == 3;
-	addr_clk = clock and wr_addr and stage.q[] == 3;
+	accum_clk = clock and wr_acc and stage.q[] >= WR_STAGE;
+	addr_clk = clock and wr_addr and stage.q[] >= WR_STAGE;
 	accum[].clk = accum_clk;
 	addr[].clk = addr_clk;
 	
-	ram_wren = wr_ram and stage.q[] == 3;
+	ram_wren = wr_ram and stage.q[] >= WR_STAGE;
 	ram.wren = ram_wren;
 	
 	-- READ, READ_ADDR command
